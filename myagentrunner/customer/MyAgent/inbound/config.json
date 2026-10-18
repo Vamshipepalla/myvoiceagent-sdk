@@ -1,0 +1,19 @@
+{
+  "name": "MyAgent",
+  "models": {
+    "stt": "deepgram/nova-3",
+    "llm": "openai/gpt-4.1-mini",
+    "tts": "cartesia/sonic-3"
+  },
+  "session": {
+    "user_away_timeout": 15,
+    "turn_detection": "adaptive",
+    "interruption_mode": "adaptive",
+    "endpointing": {
+      "mode": "dynamic",
+      "min_delay": 0.5,
+      "max_delay": 3.0,
+      "alpha": 0.9
+    }
+  }
+}
