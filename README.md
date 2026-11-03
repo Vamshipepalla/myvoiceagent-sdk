@@ -159,7 +159,7 @@ flowchart LR
 ## Project structure
 
 ```text
-myvoiveagent-sdk/
+myvoiceagent-sdk/
 |-- myagentsdk/
 |   |-- agent.py                 # Shared LiveKit Agent base
 |   |-- app.py                   # Registers a runtime with LiveKit AgentServer
@@ -243,7 +243,7 @@ Replace `OWNER/REPOSITORY` below with the actual GitHub repository path.
 2. **Enter the project folder:**
 
    ```powershell
-   Set-Location myvoiveagent-sdk
+   Set-Location myvoiceagent-sdk
    ```
 
 3. **Create a Python virtual environment:**
@@ -302,8 +302,8 @@ Replace `OWNER/REPOSITORY` below with the actual GitHub repository path.
 Run these commands from a terminal. Replace the repository URL as described above.
 
 ```bash
-git clone https://github.com/OWNER/REPOSITORY.git
-cd myvoiveagent-sdk
+git clone https://github.com/Vamshipepalla/myvoiceagent-sdk.git
+cd myvoiceagent-sdk
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
