@@ -237,7 +237,7 @@ Replace `OWNER/REPOSITORY` below with the actual GitHub repository path.
 1. **Clone the repository:**
 
    ```powershell
-   git clone https://github.com/OWNER/REPOSITORY.git
+   git clone https://github.com/Vamshipepalla/myvoiceagent-sdk.git
    ```
 
 2. **Enter the project folder:**
