@@ -18,7 +18,7 @@ class LoadConfigTests(unittest.TestCase):
             "models": {"stt": "vendor/stt", "llm": "vendor/llm", "tts": "vendor/tts"},
             "session": {
                 "user_away_timeout": 12,
-                "turn_detection": "stt",
+                "turn_detection": "vad",
                 "interruption_mode": "vad",
                 "endpointing": {
                     "mode": "dynamic",
@@ -32,9 +32,10 @@ class LoadConfigTests(unittest.TestCase):
             config = load_config(self.write_config(directory, data))
 
         self.assertEqual(config.name, "MyAgent")
-        self.assertEqual(config.models.llm, "vendor/llm")
+        self.assertEqual(config.models.llm.model, "vendor/llm")
+        self.assertEqual(config.models.llm.provider, "inference")
         self.assertEqual(config.session.user_away_timeout, 12.0)
-        self.assertEqual(config.session.turn_detection, "stt")
+        self.assertEqual(config.session.turn_detection, "vad")
         self.assertEqual(config.session.interruption_mode, "vad")
         self.assertEqual(config.session.endpointing_mode, "dynamic")
         self.assertEqual(config.session.min_endpointing_delay, 0.4)
@@ -83,6 +84,59 @@ class LoadConfigTests(unittest.TestCase):
             config = load_config(self.write_config(directory, data))
 
         self.assertEqual(config.session.turn_detection, "auto")
+
+    def test_loads_provider_specific_model_settings(self) -> None:
+        data = {
+            "name": "MyAgent",
+            "models": {
+                "stt": {
+                    "provider": "deepgram",
+                    "model": "nova-3",
+                    "language": "en-IN",
+                },
+                "llm": {"provider": "google", "model": "gemini-3.1-flash-lite"},
+                "tts": {
+                    "provider": "sarvam",
+                    "model": "bulbul:v3",
+                    "language": "en-IN",
+                    "languages": ["en-IN", "te-IN"],
+                    "speaker": "pooja",
+                    "api_key_env": "SARVAM_API_KEY",
+                },
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            config = load_config(self.write_config(directory, data))
+
+        self.assertEqual(config.models.stt.provider, "deepgram")
+        self.assertEqual(config.models.stt.language, "en-IN")
+        self.assertEqual(config.models.llm.provider, "google")
+        self.assertEqual(config.models.llm.model, "gemini-3.1-flash-lite")
+        self.assertEqual(config.models.tts.provider, "sarvam")
+        self.assertEqual(config.models.tts.model, "bulbul:v3")
+        self.assertEqual(config.models.tts.language, "en-IN")
+        self.assertEqual(config.models.tts.languages, ("en-IN", "te-IN"))
+        self.assertEqual(config.models.tts.speaker, "pooja")
+        self.assertEqual(config.models.tts.api_key_env, "SARVAM_API_KEY")
+
+    def test_rejects_sarvam_model_without_api_key_environment_variable(self) -> None:
+        data = {
+            "name": "MyAgent",
+            "models": {
+                "stt": "vendor/stt",
+                "llm": "vendor/llm",
+                "tts": {
+                    "provider": "sarvam",
+                    "model": "bulbul:v3",
+                    "language": "en-IN",
+                    "speaker": "pooja",
+                },
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_config(directory, data)
+            with self.assertRaisesRegex(ConfigError, "api_key_env.*required"):
+                load_config(path)
 
     def test_rejects_endpointing_minimum_above_maximum(self) -> None:
         data = {

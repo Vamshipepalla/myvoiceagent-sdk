@@ -1,0 +1,34 @@
+{
+  "name": "MyAgent",
+  "prompt": "prompt/prompt.md",
+  "models": {
+    "stt": {
+      "provider": "deepgram",
+      "model": "nova-3",
+      "language": "en-IN"
+    },
+    "llm": {
+      "provider": "google",
+      "model": "gemini-3.5-flash"
+    },
+    "tts": {
+      "provider": "sarvam",
+      "model": "bulbul:v4-flash",
+      "language": "en-IN",
+      "languages": ["en-IN"],
+      "speaker": "ishita_en_customer",
+      "api_key_env": "SARVAM_API_KEY"
+    }
+  },
+  "session": {
+    "user_away_timeout": 15,
+    "turn_detection": "vad",
+    "interruption_mode": "adaptive",
+    "endpointing": {
+      "mode": "dynamic",
+      "min_delay": 0.5,
+      "max_delay": 3.0,
+      "alpha": 0.9
+    }
+  }
+}

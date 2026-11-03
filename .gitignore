@@ -1,7 +1,40 @@
+# Environment variables and secrets
 .env
-.venv/
+.env.*
+!.env.example
+
+# Python
 __pycache__/
 *.py[cod]
-build/
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+node_modules/
 dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credentials
+*service-account*.json
+*credentials*.json
+
+# Generated Python package metadata
 *.egg-info/
+
+# Local database, call recordings and transcripts
+data/
+
+# TypeScript build cache
+*.tsbuildinfo

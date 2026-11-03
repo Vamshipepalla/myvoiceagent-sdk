@@ -4,7 +4,7 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 
 class ConfigError(ValueError):
@@ -14,13 +14,24 @@ class ConfigError(ValueError):
 TurnDetection = Literal["auto", "stt", "vad", "realtime_llm", "manual"]
 EndpointingMode = Literal["fixed", "dynamic"]
 InterruptionMode = Literal["adaptive", "vad"]
+ModelProvider = Literal["inference", "deepgram", "google", "sarvam"]
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    provider: ModelProvider
+    model: str
+    language: str | None = None
+    api_key_env: str | None = None
+    speaker: str | None = None
+    languages: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class ModelConfig:
-    stt: str
-    llm: str
-    tts: str
+    stt: ModelSpec
+    llm: ModelSpec
+    tts: ModelSpec
 
 
 @dataclass(frozen=True)
@@ -37,6 +48,7 @@ class SessionConfig:
 @dataclass(frozen=True)
 class AgentConfig:
     name: str
+    prompt: str | None
     models: ModelConfig
     session: SessionConfig
 
@@ -74,6 +86,75 @@ def _check_keys(value: dict[str, Any], allowed: set[str], field: str) -> None:
         raise ConfigError(f"Unknown {field} field(s): {', '.join(unknown)}")
 
 
+def _model_spec(value: Any, field: str, allowed_providers: set[str]) -> ModelSpec:
+    if isinstance(value, str):
+        return ModelSpec(provider="inference", model=_string(value, field))
+
+    data = _object(value, field)
+    _check_keys(
+        data,
+        {"provider", "model", "language", "api_key_env", "speaker", "languages"},
+        field,
+    )
+    provider = _string(data.get("provider"), f"{field}.provider")
+    if provider not in allowed_providers:
+        choices = ", ".join(sorted(allowed_providers))
+        raise ConfigError(f"'{field}.provider' must be one of: {choices}")
+    language = data.get("language")
+    if language is not None:
+        language = _string(language, f"{field}.language")
+    api_key_env = data.get("api_key_env")
+    if api_key_env is not None:
+        api_key_env = _string(api_key_env, f"{field}.api_key_env")
+        if not api_key_env.replace("_", "").isalnum():
+            raise ConfigError(f"'{field}.api_key_env' must be an environment variable name")
+    speaker = data.get("speaker")
+    if speaker is not None:
+        speaker = _string(speaker, f"{field}.speaker")
+    languages_data = data.get("languages", [])
+    if not isinstance(languages_data, list) or not all(
+        isinstance(language_code, str) and language_code.strip()
+        for language_code in languages_data
+    ):
+        raise ConfigError(f"'{field}.languages' must be an array of non-empty language codes")
+    languages = tuple(languages_data)
+    if len(set(languages)) != len(languages):
+        raise ConfigError(f"'{field}.languages' must not contain duplicates")
+    if provider == "sarvam":
+        if not api_key_env:
+            raise ConfigError(f"'{field}.api_key_env' is required for Sarvam TTS")
+        if not speaker:
+            raise ConfigError(f"'{field}.speaker' is required for Sarvam TTS")
+        supported_languages = {
+            "bn-IN", "en-IN", "gu-IN", "hi-IN", "kn-IN", "ml-IN",
+            "mr-IN", "od-IN", "pa-IN", "ta-IN", "te-IN",
+        }
+        configured_languages = set(languages)
+        if language is not None:
+            configured_languages.add(language)
+        unsupported_languages = configured_languages - supported_languages
+        if unsupported_languages:
+            raise ConfigError(
+                f"'{field}' has unsupported Sarvam language code(s): "
+                f"{', '.join(sorted(unsupported_languages))}"
+            )
+        if language is not None and languages and language not in languages:
+            raise ConfigError(f"'{field}.language' must be included in '{field}.languages'")
+    elif api_key_env is not None or speaker is not None or languages:
+        raise ConfigError(
+            f"'{field}.api_key_env', '{field}.speaker', and '{field}.languages' "
+            "are only supported for Sarvam TTS"
+        )
+    return ModelSpec(
+        provider=cast(ModelProvider, provider),
+        model=_string(data.get("model"), f"{field}.model"),
+        language=language,
+        api_key_env=api_key_env,
+        speaker=speaker,
+        languages=languages,
+    )
+
+
 def load_config(path: str | Path) -> AgentConfig:
     """Load and validate an agent's config.json."""
     config_path = Path(path)
@@ -85,14 +166,17 @@ def load_config(path: str | Path) -> AgentConfig:
         raise ConfigError(f"Invalid JSON in agent config '{config_path}': {exc}") from exc
 
     root = _object(data, "config")
-    _check_keys(root, {"name", "models", "session"}, "config")
+    _check_keys(root, {"name", "prompt", "models", "session"}, "config")
+    prompt = root.get("prompt")
+    if prompt is not None:
+        prompt = _string(prompt, "prompt")
 
     models_data = _object(root.get("models"), "models")
     _check_keys(models_data, {"stt", "llm", "tts"}, "models")
     models = ModelConfig(
-        stt=_string(models_data.get("stt"), "models.stt"),
-        llm=_string(models_data.get("llm"), "models.llm"),
-        tts=_string(models_data.get("tts"), "models.tts"),
+        stt=_model_spec(models_data.get("stt"), "models.stt", {"inference", "deepgram"}),
+        llm=_model_spec(models_data.get("llm"), "models.llm", {"inference", "google"}),
+        tts=_model_spec(models_data.get("tts"), "models.tts", {"inference", "sarvam"}),
     )
 
     session_data = _object(root.get("session", {}), "session")
@@ -148,6 +232,7 @@ def load_config(path: str | Path) -> AgentConfig:
 
     return AgentConfig(
         name=_string(root.get("name"), "name"),
+        prompt=prompt,
         models=models,
         session=SessionConfig(
             user_away_timeout=timeout,

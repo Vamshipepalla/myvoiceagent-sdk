@@ -1,26 +1,20 @@
 import argparse
-import importlib.util
+from concurrent.futures import ThreadPoolExecutor
+import logging
 import sys
 from pathlib import Path
-from types import ModuleType
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING
 
-from myagentsdk import AgentConfig, ConfigError, load_config
+from myagentsdk import (
+    AgentRuntime,
+    ConfigError,
+    configure_logging,
+    create_server as create_agent_server,
+    load_environment,
+)
 
 if TYPE_CHECKING:
-    from livekit.agents import AgentServer, JobContext
-
-
-def _load_module(module_name: str, file_path: Path) -> ModuleType:
-    if not file_path.is_file():
-        raise ConfigError(f"Agent module not found: '{file_path}'")
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if spec is None or spec.loader is None:
-        raise ConfigError(f"Cannot load agent module: '{file_path}'")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
+    from livekit.agents import AgentServer
 
 
 def resolve_agent_dir(agent_name: str, direction: str) -> Path:
@@ -38,49 +32,39 @@ def resolve_agent_dir(agent_name: str, direction: str) -> Path:
     return agent_dir
 
 
-def _load_agent_hooks(
-    agent_dir: Path,
-) -> tuple[AgentConfig, Callable[[AgentConfig, str], Any], Callable[..., Any]]:
-    config = load_config(agent_dir / "config.json")
-    module_prefix = (
-        f"myagentrunner_customer_{agent_dir.parent.parent.name}_"
-        f"{agent_dir.parent.name}_{agent_dir.name}"
-    )
-    agent_module = _load_module(f"{module_prefix}_agent", agent_dir / "agent.py")
-    runtime_module = _load_module(f"{module_prefix}_runtime", agent_dir / "_runtime.py")
-
-    create_agent = getattr(agent_module, "create_agent", None)
-    start_runtime = getattr(runtime_module, "start", None)
-    if not callable(create_agent):
-        raise ConfigError(f"'{agent_dir / 'agent.py'}' must define create_agent(config, instructions)")
-    if not callable(start_runtime):
-        raise ConfigError(
-            f"'{agent_dir / '_runtime.py'}' must define async start(ctx, create_agent, config)"
-        )
-    return config, create_agent, start_runtime
-
-
 def create_server(agent_dir: str | Path) -> "AgentServer":
-    """Load one customer's agent and register its runtime with LiveKit."""
-    from livekit.agents import AgentServer
+    """Load one customer's agent through the SDK and register it with LiveKit."""
+    return create_agent_server(AgentRuntime(agent_dir))
 
-    resolved_dir = Path(agent_dir).resolve()
-    config, create_agent, start_runtime = _load_agent_hooks(resolved_dir)
-    server = AgentServer()
 
-    async def entrypoint(ctx: "JobContext") -> None:
-        await start_runtime(ctx, create_agent, config)
+def _prepare_livekit_ssl_context() -> None:
+    from livekit.agents.utils import http_context
 
-    server.rtc_session()(entrypoint)
-    return server
+    http_context._set_default_cert_env()
+    # LiveKit builds this cached TLS context in its event loop if it is not prepared here.
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="livekit-ssl") as executor:
+        executor.submit(http_context._create_ssl_context).result()
 
 
 def run_agent(agent_name: str, direction: str) -> None:
-    from dotenv import load_dotenv
     from livekit.agents import cli
 
     repo_root = Path(__file__).resolve().parent.parent
-    load_dotenv(repo_root / ".env")
+    load_environment(repo_root / ".env")
+    log_path = configure_logging("agent")
+    logging.getLogger(__name__).info(
+        "Starting the %s %s agent. Agent logs are saved to %s.",
+        agent_name,
+        direction,
+        log_path,
+    )
+    try:
+        _prepare_livekit_ssl_context()
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "The secure connection setup failed before the agent could start."
+        )
+        raise
     cli.run_app(create_server(resolve_agent_dir(agent_name, direction)))
 
 

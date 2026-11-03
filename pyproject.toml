@@ -8,12 +8,21 @@ version = "0.1.0"
 description = "A config-driven LiveKit voice-agent SDK and customer agent runner."
 requires-python = ">=3.10"
 dependencies = [
-    "livekit-agents>=1.6,<2",
+    "livekit-agents>=1.8.9,<2",
+    "livekit-api>=1.0",
     "python-dotenv>=1.0",
+    "livekit-plugins-deepgram>=1.8.8",
+    "livekit-plugins-sarvam>=1.8.10,<2",
+    "livekit-plugins-google>=1.8.8,<1.8.10",
+    "livekit-plugins-silero>=1.8.8,<1.8.10",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
 ]
 
 [project.scripts]
 myagentrunner = "myagentrunner.runner:main"
+myagentdial = "myagentrunner.dial:main"
+myagentdashboard = "myagentrunner.dashboard:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
